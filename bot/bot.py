@@ -2,7 +2,6 @@ import os
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
-from utils.db import db
 
 
 # Load environment variables from .env file
