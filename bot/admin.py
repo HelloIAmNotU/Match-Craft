@@ -125,6 +125,7 @@ class Admin(commands.Cog):
         await interaction.followup.send(view=EmbedView(myText="Finished setting up game."),ephemeral=True)
             
     
+ 
     @app_commands.command(name="getadmins",description="ADMINS ONLY: Displays all current Admin users")
     async def getadmins(self,interaction: discord.Interaction):
         if (self.verifyAdmin(interaction.user)):
