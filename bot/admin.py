@@ -73,7 +73,7 @@ class Admin(commands.Cog):
 
     # TODO: Move this elsewhere
     @app_commands.command(name="creategame", description="Creates a new game")
-    async def creategame(self, interaction: discord.Interaction, game_name : str, teams : int, players_per_team : int, role_based_matchmaking : bool, admin_role : discord.Role, num_roles : int | None):
+    async def creategame(self, interaction: discord.Interaction, game_name : str, teams : int, players_per_team : int, role_based_matchmaking : bool, admin_role : discord.Role, access_role : discord.Role, num_roles : int | None):
         if not self.verifyAdmin(interaction.user):
             await interaction.response.send_message(view=EmbedView(myText="This comnand is reserved for administrators"),ephemeral=True)
             return
@@ -96,9 +96,27 @@ class Admin(commands.Cog):
             return
         
         # Create the channels
-        category = await interaction.guild.create_category(game_name, reason=None)
+        category_override = { # Ensures that the access role can see the category
+            interaction.guild.default_role: discord.PermissionOverwrite(
+                view_channel=False, 
+                send_messages=False
+            ),
+            access_role: discord.PermissionOverwrite(
+                view_channel=True, 
+                send_messages=False
+            ),
+            admin_role: discord.PermissionOverwrite(
+                view_channel=True, 
+                send_messages=True
+            )
+        }
+        category = await interaction.guild.create_category(game_name, overwrites=category_override, reason=None)
         announcements_override = {
             interaction.guild.default_role: discord.PermissionOverwrite(
+                view_channel=False, 
+                send_messages=False
+            ),
+            access_role: discord.PermissionOverwrite(
                 view_channel=True, 
                 send_messages=False
             ),
