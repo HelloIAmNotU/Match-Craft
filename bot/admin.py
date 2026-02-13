@@ -70,7 +70,91 @@ class Admin(commands.Cog):
             await interaction.response.send_message(view=EmbedView(myText=outMessage),ephemeral=True)
         else:
             await interaction.response.send_message(view=EmbedView(myText="This command is reserved for administrators"),ephemeral=True)
-    
+
+    # TODO: Move this elsewhere
+    @app_commands.command(name="creategame", description="Creates a new game")
+    async def creategame(self, interaction: discord.Interaction, game_name : str, teams : int, players_per_team : int, role_based_matchmaking : bool, admin_role : discord.Role, access_role : discord.Role, num_roles : int | None):
+        if not self.verifyAdmin(interaction.user):
+            await interaction.response.send_message(view=EmbedView(myText="This comnand is reserved for administrators"),ephemeral=True)
+            return
+        
+        if players_per_team <= 0 or teams < 2:
+            await interaction.response.send_message(view=EmbedView(myText="Ensure that the number of teams is greater than 1 and there are players on each team"),ephemeral=True)
+            return
+        
+        # Check if number of roles is correctly specified for role based matchmaking
+        if role_based_matchmaking and num_roles == None:
+            await interaction.response.send_message(view=EmbedView(myText="Please specify the number of roles for role based matchmaking, or disable role based matchmaking"),ephemeral=True)
+            return
+        
+        try:
+            await db.connect()
+            await db.execute("INSERT INTO game_configuration (game_name, players_per_team, team_count, role_count) VALUES ($1, $2, $3, $4);", game_name, players_per_team, teams, num_roles if role_based_matchmaking else 1)
+            await db.close()
+        except:
+            await interaction.response.send_message(view=EmbedView(myText="Unable to add game to database"),ephemeral=True)
+            return
+        
+        # Create the channels
+        category_override = { # Ensures that the access role can see the category
+            interaction.guild.default_role: discord.PermissionOverwrite(
+                view_channel=False, 
+                send_messages=False
+            ),
+            access_role: discord.PermissionOverwrite(
+                view_channel=True, 
+                send_messages=False
+            ),
+            admin_role: discord.PermissionOverwrite(
+                view_channel=True, 
+                send_messages=True
+            )
+        }
+        category = await interaction.guild.create_category(game_name, overwrites=category_override, reason=None)
+        announcements_override = {
+            interaction.guild.default_role: discord.PermissionOverwrite(
+                view_channel=False, 
+                send_messages=False
+            ),
+            access_role: discord.PermissionOverwrite(
+                view_channel=True, 
+                send_messages=False
+            ),
+            admin_role: discord.PermissionOverwrite(
+                view_channel=True, 
+                send_messages=True
+            )
+        }
+        announcements_channel = await interaction.guild.create_text_channel(name = f"{game_name}-annnouncements", overwrites = announcements_override, category=category, reason=None)
+        general_channel = await interaction.guild.create_text_channel(name = f"{game_name}-general", category=category, reason=None)
+
+        if not role_based_matchmaking:
+            await interaction.response.send_message(view=EmbedView(myText="Finished setting up game."),ephemeral=True)
+            return
+        
+        def check_user(m):
+            return m.author == interaction.user and m.channel == interaction.channel
+
+        try:
+            await db.connect()
+        except:
+            await interaction.response.send_message(view=EmbedView(myText="Couldn't re-connect to DB for role info."),ephemeral=True)
+            return
+
+        await interaction.response.defer()
+        for role_number in range(num_roles + 1):
+            await interaction.followup.send(f"Send the name of role {role_number + 1}")
+            user_reply = await self.bot.wait_for('message', check=check_user, timeout=30)
+            
+            try:
+                await db.execute("INSERT INTO role_information (game_name, role_name) VALUES ($1, $2);", game_name, user_reply.content.strip())
+            except:
+                await interaction.followup.send(view=EmbedView(myText="Unable to insert role information into database"),ephemeral=True)
+                return
+
+        await db.close()
+        await interaction.followup.send(view=EmbedView(myText="Finished setting up game."),ephemeral=True)
+ 
     @app_commands.command(name="getadmins",description="ADMINS ONLY: Displays all current Admin users")
     async def getadmins(self,interaction: discord.Interaction):
         if (self.verifyAdmin(interaction.user)):
