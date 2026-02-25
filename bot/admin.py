@@ -163,11 +163,13 @@ class Admin(commands.Cog):
         
         try:
             await db.connect()
-            await db.execute("DELETE FROM game_configuration WHERE game_name = $1;", game_name)
+            await db.execute("DELETE FROM game_configuration WHERE game_name = $1;", game_name) # Cascade will take care of the rest here
             await db.close()
         except:
             await interaction.response.send_message(view=EmbedView(myText="Couldn't connect to DB for game removal."),ephemeral=True)
             return
+        
+        await interaction.response.send_message(view=EmbedView(myText=f"Removed \"{game_name}\" from the database."),ephemeral=True)
  
     @app_commands.command(name="getadmins",description="ADMINS ONLY: Displays all current Admin users")
     async def getadmins(self,interaction: discord.Interaction):
