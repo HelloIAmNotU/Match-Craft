@@ -2,7 +2,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from utils.db import db
-from views.helpers import EmbedView, DropdownView
+from views.helpers import EmbedView#, DropdownView
 
 class Admin(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -90,7 +90,7 @@ class Admin(commands.Cog):
         try:
             await db.connect()
             # NOW USES CHANNEL ID AS MAIN KEY
-            await db.execute("INSERT INTO game_configuration (channel_id, game_name, players_per_team, team_count, role_count) VALUES ($1, $2, $3, $4, $5);", interaction.channel_id, game_name, players_per_team, teams, num_roles if role_based_matchmaking else 1)
+            await db.execute("INSERT INTO game_configuration (game_name, channel_id, players_per_team, team_count, role_count) VALUES ($1, $2, $3, $4, $5);", game_name, interaction.channel_id, players_per_team, teams, num_roles if role_based_matchmaking else 1)
             await db.close()
         except:
             await interaction.response.send_message(view=EmbedView(myText="Unable to add game to database"),ephemeral=True)
@@ -156,29 +156,45 @@ class Admin(commands.Cog):
         await db.close()
         await interaction.followup.send(view=EmbedView(myText="Finished setting up game."),ephemeral=True)
     
-    # THIS COMMAND MOST LIKELY DOES NOT WORK, but I cannot test it. The idea is here
-    @app_commands.command(name="stopgame", description="ADMINS ONLY: Stops a given game")
-    async def stopgame(self, interaction: discord.Interaction):
+    # This command now works as intended. Nice!
+    @app_commands.command(name="deletegames", description="ADMINS ONLY: Stops a given game")
+    async def deletegames(self, interaction: discord.Interaction):
         if not self.verifyAdmin(interaction.user):
             await interaction.response.send_message(view=EmbedView(myText="This command is reserved for administrators"),ephemeral=True)
             return
         try:
             await db.connect()
-            games = await db.execute("SELECT game_name FROM game_configuration WHERE channel_id = $1;",interaction.channel_id)
+            record = await db.execute("SELECT game_name FROM game_configuration WHERE channel_id = $1;",interaction.channel_id)
             await db.close()
         except:
             await interaction.response.send_message(view=EmbedView(myText="Unable to delete game from database"),ephemeral=True)
             return
-        if len(games) == 0:
+        if len(record) == 0:
             await interaction.response.send_message(view=EmbedView(myText="No games found in this channel."),ephemeral=True)
-        view = DropdownView(placeholder_text="Please select the game to delete",choices=games)
-        await interaction.response.send_message(view=view,ephemeral=True)
-        await view.wait()
-        if view.select.retval == None:
             return
-        db.connect()
-        db.execute("DELETE FROM game_configuration WHERE game_name = $1;",view.select.retval)
-        db.close()
+        
+        interacted = False
+        class Dropdown(discord.ui.Select):
+            def __init__(self):
+                options = []
+                for game in record:
+                    options.append(discord.SelectOption(label=game['game_name']))
+                super().__init__(placeholder="Choose a game to delete!",min_values=1,max_values=1,options=options)
+            async def callback(self, interaction: discord.Interaction):
+                global interacted
+                interacted = True
+                await db.connect()
+                await db.execute("DELETE FROM game_configuration WHERE game_name = $1;",self.values[0])
+                await db.close()
+                await interaction.response.send_message(view=EmbedView(myText="Removal succeeded!"),ephemeral=True)
+
+        class DropdownView(discord.ui.View):
+            def __init__(self):
+                super().__init__(timeout=180)
+                self.add_item(Dropdown())
+
+        await interaction.response.send_message(view=DropdownView(),ephemeral=True)
+        
  
     @app_commands.command(name="getadmins",description="ADMINS ONLY: Displays all current Admin users")
     async def getadmins(self,interaction: discord.Interaction):
