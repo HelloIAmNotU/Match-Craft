@@ -11,25 +11,43 @@ class Queue(commands.Cog):
         self.adminCog = bot.get_cog("Admin")
         self.queueDict = {}
 
+    # returns a string of all the users in current channel's queue
     def getmsg(self, channel: discord.TextChannel):
         if len(self.queueDict[channel.id]["players"]) == 0:
             return "\nNo one is in this channel\n"
         
         msg = "The following users are in the queue:\n"
-
         for x in range (0,len(self.queueDict[channel.id]["players"])):
             msg += (self.queueDict[channel.id]["players"][x]).mention
             if(x != len(self.queueDict[channel.id]["players"])-1):
                 msg += "\n"
 
-        msg += ("\n["+str(len(self.queueDict[channel.id]["players"]))+"/"+str(self.queueDict[channel.id]["max"])+"]")
-        
-        return msg
-
+        # this line adds a display of how "full" the queue is
+        return (msg+("\n["+str(len(self.queueDict[channel.id]["players"]))+"/"+str(self.queueDict[channel.id]["max"])+"]"))
+    
+    # edits the queue message to reflect changes
     async def editMessage(self, channel: discord.TextChannel):
         if channel.id in self.queueDict.keys():
             msg = await channel.fetch_message(self.queueDict[channel.id]["msg_id"])
             await msg.edit(view=EmbedPugView(myQueueName=self.queueDict[channel.id]["name"],myText=self.getmsg(channel),myQueue=self))
+
+    # adds/removes the player from the queue if conditions are met (removes duplicate code)
+    async def accessDict(self, interaction: discord.Interaction, user: discord.User, add):
+        cur_channel = interaction.channel
+        if cur_channel.id not in self.queueDict.keys():
+            return await interaction.response.send_message(view=EmbedView(myText="There is no queue in this channel"),ephemeral=True)
+
+        if add == (user in self.queueDict[cur_channel.id]["players"]): # this does one thing for add, the other for remove
+            return await interaction.response.send_message(view=EmbedView(myText=(f"{user.mention} is " + ("already" if add else "not") + " in the queue")),ephemeral=True)
+        
+        if len(self.queueDict[cur_channel.id]["players"]) == self.queueDict[cur_channel.id]["max"]:
+            return await interaction.response.send_message(view=EmbedView(myText="The queue is already full"),ephemeral=True)
+        
+        self.queueDict[cur_channel.id]["players"].append(user) if add else self.queueDict[cur_channel.id]["players"].remove(user)
+        
+        await interaction.response.send_message(view=EmbedView(myText=("Successfully " + ("added" if add else "removed") + " player")),ephemeral=True)
+
+        return await self.editMessage(cur_channel)
 
 
     # we ask the admin cog to verify admins for us
@@ -59,7 +77,7 @@ class Queue(commands.Cog):
 
         await interaction.response.send_message(view=EmbedView(myText="Game creation success!"),ephemeral=True)
 
-        msg = await cur_channel.send(view=EmbedView(myText=f"Queue for {game}\n\n\n/queue join  ,  /queue leave"))
+        msg = await cur_channel.send(view=EmbedPugView(myQueueName=game,myText=self.getmsg(cur_channel),myQueue=self))
         self.queueDict[cur_channel.id]["msg_id"] = msg.id
 
     # stops queue
@@ -85,21 +103,8 @@ class Queue(commands.Cog):
     async def add(self, interaction: discord.Interaction, user: discord.User):
         if not self.verifyAdmin(interaction.user):
             return await interaction.response.send_message(view=EmbedView(myText="This command is reserved for administrators"),ephemeral=True)
-
-        cur_channel = interaction.channel
-        if cur_channel.id not in self.queueDict.keys():
-            return await interaction.response.send_message(view=EmbedView(myText="There is no queue in this channel"),ephemeral=True)
-
-        if user in self.queueDict[cur_channel.id]["players"]: # make sure target is not already in queue
-            return await interaction.response.send_message(view=EmbedView(myText="That user is already in the queue"),ephemeral=True)
         
-        if len(self.queueDict[cur_channel.id]["players"]) == self.queueDict[cur_channel.id]["max"]:
-            return await interaction.response.send_message(view=EmbedView(myText="The queue is already full"),ephemeral=True)
-        
-        self.queueDict[cur_channel.id]["players"].append(user)
-        await interaction.response.send_message(view=EmbedView(myText="Successfully added player"),ephemeral=True)
-
-        return await self.editMessage(cur_channel)
+        return await self.accessDict(interaction,user,True)
     
     # kick a user from the queue
     @group.command(name="kick",description="ADMIN ONLY: Kicks the specified User (in the queue) from the current queue")
@@ -107,17 +112,7 @@ class Queue(commands.Cog):
         if not self.verifyAdmin(interaction.user):
             return await interaction.response.send_message(view=EmbedView(myText="This command is reserved for administrators"),ephemeral=True)
 
-        cur_channel = interaction.channel
-        if cur_channel.id not in self.queueDict.keys():
-            return await interaction.response.send_message(view=EmbedView(myText="There is no queue in this channel"),ephemeral=True)
-        
-        if user not in self.queueDict[cur_channel.id]["players"]: # make sure target is actually in queue
-            return await interaction.response.send_message(view=EmbedView(myText="That user is not in the queue"),ephemeral=True)
-        
-        self.queueDict[cur_channel.id]["players"].remove(user)
-        await interaction.response.send_message(view=EmbedView(myText="Successfully kicked player"),ephemeral=True)
-
-        return await self.editMessage(cur_channel)
+        return await self.accessDict(interaction,user,False)
     
     # TODO: start the game
     @group.command(name="start",description="ADMIN ONLY: Immediately starts the game")
@@ -134,36 +129,12 @@ class Queue(commands.Cog):
     # join the queue
     @group.command(name="join",description="Join the queue in the current channel")
     async def join(self, interaction: discord.Interaction):
-        cur_channel = interaction.channel
-        if cur_channel.id not in self.queueDict.keys():
-            return await interaction.response.send_message(view=EmbedView(myText="There is no queue in this channel"),ephemeral=True)
-
-        if interaction.user in self.queueDict[cur_channel.id]["players"]:
-            return await interaction.response.send_message(view=EmbedView(myText="You are already in the queue"),ephemeral=True)
-        
-        if len(self.queueDict[cur_channel.id]["players"]) == self.queueDict[cur_channel.id]["max"]:
-            return await interaction.response.send_message(view=EmbedView(myText="The queue is already full"),ephemeral=True)
-        
-        self.queueDict[cur_channel.id]["players"].append(interaction.user)
-        await interaction.response.send_message(view=EmbedView(myText="You joined the queue!"),ephemeral=True)
-
-        return await self.editMessage(cur_channel)
+        return await self.accessDict(interaction,interaction.user,True)
     
     # leave the queue
     @group.command(name="leave",description="Leave the queue in the current channel")
     async def remove(self, interaction: discord.Interaction):
-        cur_channel = interaction.channel
-
-        if cur_channel.id not in self.queueDict.keys():
-            return await interaction.response.send_message(view=EmbedView(myText="There is no queue in this channel"),ephemeral=True)
-        
-        if interaction.user not in self.queueDict[cur_channel.id]["players"]: # make sure target is actually in queue
-            return await interaction.response.send_message(view=EmbedView(myText="You are not in the queue"),ephemeral=True)
-        
-        self.queueDict[cur_channel.id]["players"].remove(interaction.user)
-        await interaction.response.send_message(view=EmbedView(myText="You left the queue!"),ephemeral=True)
-
-        return await self.editMessage(cur_channel)
+        return await self.accessDict(interaction,interaction.user,False)
 
 
 async def setup(bot: commands.Bot) -> None:
