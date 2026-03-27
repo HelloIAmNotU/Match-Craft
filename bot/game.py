@@ -7,7 +7,7 @@ from views.helpers import EmbedView
 class Game(commands.Cog):
     group = app_commands.Group(name="game",description="Related to games")
 
-    def __init__(self, bot: commands.Bot):
+    def __init__(self, bot) -> None:
         self.bot = bot
         self.adminCog=self.bot.get_cog("Admin")
 
@@ -123,5 +123,5 @@ class Game(commands.Cog):
 
         await interaction.response.send_message(view=DropdownView(),ephemeral=True,delete_after=60)
         
-async def setup(bot: commands.Bot):
+async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Game(bot))
