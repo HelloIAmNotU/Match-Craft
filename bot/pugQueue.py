@@ -14,7 +14,7 @@ class Queue(commands.Cog):
     # returns a string of all the users in current channel's queue
     def getmsg(self, channel: discord.TextChannel):
         if len(self.queueDict[channel.id]["players"]) == 0:
-            return "\nNo one is in this channel\n"
+            return "\nNo one is in this queue\n"
         
         msg = "The following users are in the queue:\n"
         for x in range (0,len(self.queueDict[channel.id]["players"])):
@@ -73,6 +73,7 @@ class Queue(commands.Cog):
             "max": maxplayers,
             "players": [],
             "msg_id": None,
+            "vc": None
         }
 
         await interaction.response.send_message(view=EmbedView(myText="Game creation success!"),ephemeral=True)
@@ -93,6 +94,7 @@ class Queue(commands.Cog):
         try: # remove queue from dictionary and delete original queue message
             msg = await cur_channel.fetch_message(self.queueDict[cur_channel.id]["msg_id"])
             await msg.delete()
+            await (self.queueDict[cur_channel.id]["vc"]).delete()
             del self.queueDict[cur_channel.id]
             await interaction.response.send_message(view=EmbedView(myText=f"The queue in this channel has ended"))
         except: 
@@ -116,12 +118,39 @@ class Queue(commands.Cog):
     
     # TODO: start the game
     @group.command(name="start",description="ADMIN ONLY: Immediately starts the game")
-    async def start(self, interaction: discord.Interaction):
+    async def start(self, interaction: discord.Interaction, category: discord.CategoryChannel):
+        if not self.verifyAdmin(interaction.user):
+            return await interaction.response.send_message(view=EmbedView(myText="This command is reserved for administrators"),ephemeral=True)
+        
+        cur_channel = interaction.channel
+        if cur_channel.id not in self.queueDict.keys():
+            return await interaction.response.send_message(view=EmbedView(myText="There is no queue in this channel"),ephemeral=True)
+
+        if len(self.queueDict[cur_channel.id]["players"]) == 0:
+            return await interaction.response.send_message(view=EmbedView(myText="There is no one in the queue"),ephemeral=True)
+        
+        overwrite = {}
+        overwrite[interaction.guild.default_role] = discord.PermissionOverwrite(view_channel=False)
+        for player in self.queueDict[cur_channel.id]["players"]:
+            overwrite[player] = discord.PermissionOverwrite(
+                view_channel = True,
+                speak = True
+            )
+        
+        vc = await interaction.guild.create_voice_channel(name=self.queueDict[cur_channel.id]["name"],overwrites=overwrite,category=category)
+        self.queueDict[cur_channel.id]["vc"] = vc
+
+        invite = await vc.create_invite()
+
+        for player in self.queueDict[cur_channel.id]["players"]:
+            dm = await player.create_dm()
+            await dm.send(content=invite.url)
+
         """
         1. Create a new VC channel somewhere in the server
         2. Send a DM to every user in the queue for this channel with a link to the VC
         """
-        return
+        return await interaction.response.send_message(view=EmbedView(myText="Success!"),ephemeral=True)
     
 
     # Below are commands which anyone can use

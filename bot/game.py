@@ -34,6 +34,7 @@ class Game(commands.Cog):
             return await interaction.response.send_message(view=EmbedView(myText="Unable to add game to database"),ephemeral=True)
         
         # Create the channels
+        """
         category_override = { # Ensures that the access role can see the category
             interaction.guild.default_role: discord.PermissionOverwrite(
                 view_channel=False, 
@@ -65,7 +66,7 @@ class Game(commands.Cog):
         }
         announcements_channel = await interaction.guild.create_text_channel(name = f"{game_name}-annnouncements", overwrites = announcements_override, category=category, reason=None)
         general_channel = await interaction.guild.create_text_channel(name = f"{game_name}-general", category=category, reason=None)
-
+        """ 
         if not role_based_matchmaking:
             return await interaction.response.send_message(view=EmbedView(myText="Finished setting up game."),ephemeral=True)
         
