@@ -114,10 +114,11 @@ class Queue(commands.Cog):
             return await interaction.response.send_message(view=EmbedView(myText="There is no queue in this channel"),ephemeral=True)
 
         try: # remove queue from dictionary and delete original queue message
-            msg = await cur_channel.fetch_message(self.queueDict[cur_channel.id]["msg_id"])
-            await msg.delete()
-            if self.queueDict[cur_channel.id]["vc"] != None:
-                await (self.queueDict[cur_channel.id]["vc"]).delete()
+            if ((msgid := self.queueDict[cur_channel.id]["msg_id"]) != None):
+                msg = await cur_channel.fetch_message(msgid)
+                await msg.delete()
+            if ((vc := self.queueDict[cur_channel.id]["vc"]) != None):
+                await vc.delete()
             del self.queueDict[cur_channel.id]
             await interaction.response.send_message(view=EmbedView(myText=f"The queue in this channel has ended"))
         except: 
@@ -169,6 +170,10 @@ class Queue(commands.Cog):
         self.queueDict[cur_channel.id]["msg_id"] = None
 
         invite = await vc.create_invite()
+
+        msg = await cur_channel.fetch_message(self.queueDict[cur_channel.id]["msg_id"])
+        await msg.delete()
+        self.queueDict[cur_channel.id]["msg_id"] = None
 
         await interaction.response.send_message(view=EmbedView(myText="Start success!"),ephemeral=True)
 
