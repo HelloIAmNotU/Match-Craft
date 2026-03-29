@@ -43,6 +43,9 @@ class Queue(commands.Cog):
         if len(self.queueDict[cur_channel.id]["players"]) == self.queueDict[cur_channel.id]["max"]:
             return await interaction.response.send_message(view=EmbedView(myText="The queue is already full"),ephemeral=True)
         
+        if self.queueDict[cur_channel.id]["start"]:
+            return await interaction.response.send_message(view=EmbedView(myText="The queue game has already started"),ephemeral=True)
+        
         self.queueDict[cur_channel.id]["players"].append(user) if add else self.queueDict[cur_channel.id]["players"].remove(user)
         
         await interaction.response.send_message(view=EmbedView(myText=("Successfully " + ("added" if add else "removed") + " player")),ephemeral=True)
@@ -73,7 +76,8 @@ class Queue(commands.Cog):
             "max": maxplayers,
             "players": [],
             "msg_id": None,
-            "vc": None
+            "vc": None,
+            "start": False
         }
 
         msg = await cur_channel.send(view=EmbedPugView(myQueueName=game,myText=self.getmsg(cur_channel),myQueue=self))
@@ -159,12 +163,13 @@ class Queue(commands.Cog):
         
         vc = await interaction.guild.create_voice_channel(name=self.queueDict[cur_channel.id]["name"],overwrites=overwrite,category=category)
         self.queueDict[cur_channel.id]["vc"] = vc
-
-        invite = await vc.create_invite()
+        self.queueDict[cur_channel.id]["start"] = True
 
         msg = await cur_channel.fetch_message(self.queueDict[cur_channel.id]["msg_id"])
         await msg.delete()
         self.queueDict[cur_channel.id]["msg_id"] = None
+
+        invite = await vc.create_invite()
 
         await interaction.response.send_message(view=EmbedView(myText="Start success!"),ephemeral=True)
 
