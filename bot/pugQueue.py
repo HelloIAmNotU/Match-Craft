@@ -76,10 +76,28 @@ class Queue(commands.Cog):
             "vc": None
         }
 
-        await interaction.response.send_message(view=EmbedView(myText="Game creation success!"),ephemeral=True)
-
         msg = await cur_channel.send(view=EmbedPugView(myQueueName=game,myText=self.getmsg(cur_channel),myQueue=self))
         self.queueDict[cur_channel.id]["msg_id"] = msg.id
+
+        await interaction.response.send_message(view=EmbedView(myText="Game creation success!"),ephemeral=True)
+
+    @group.command(name="resend",description="ADMIN ONLY: Re-sends the queue message if one exists in the channel")
+    async def sendqueue(self, interaction: discord.Interaction):
+        if not self.verifyAdmin(interaction.user): # admin check
+            return await interaction.response.send_message(view=EmbedView(myText="This command is reserved for administrators"),ephemeral=True)
+
+        cur_channel = interaction.channel
+        if cur_channel.id not in self.queueDict.keys(): # make sure the channel does not have queue
+            return await interaction.response.send_message(view=EmbedView(myText="A queue does not exist in this channel"),ephemeral=True)
+        
+        msg = await cur_channel.fetch_message(self.queueDict[cur_channel.id]["msg_id"])
+        await msg.delete()
+
+        newmsg = await cur_channel.send(view=EmbedPugView(myQueueName=self.queueDict[cur_channel.id]["name"],myText=self.getmsg(cur_channel),myQueue=self))
+        self.queueDict[cur_channel.id]["msg_id"] = newmsg.id
+        
+        await interaction.response.send_message(view=EmbedView(myText="Resend success!"),ephemeral=True)
+
 
     # stops queue
     @group.command(name="end",description="ADMIN ONLY: Ends the queue in the current channel if one exists")
@@ -94,11 +112,12 @@ class Queue(commands.Cog):
         try: # remove queue from dictionary and delete original queue message
             msg = await cur_channel.fetch_message(self.queueDict[cur_channel.id]["msg_id"])
             await msg.delete()
-            await (self.queueDict[cur_channel.id]["vc"]).delete()
             del self.queueDict[cur_channel.id]
+            if self.queueDict[cur_channel.id]["vc"] != None:
+                await (self.queueDict[cur_channel.id]["vc"]).delete()
             await interaction.response.send_message(view=EmbedView(myText=f"The queue in this channel has ended"))
         except: 
-            await interaction.response.send_message(view=EmbedView(myText="Error in removing queue from this channel"))
+            await interaction.response.send_message(view=EmbedView(myText="Error in removing queue from this channel"),ephemeral=True)
     
     # add a user to the queue if not full
     @group.command(name="add",description="ADMIN ONLY: Adds the specified User (not already in queue) to the current queue")
