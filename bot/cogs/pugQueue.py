@@ -112,9 +112,9 @@ class Queue(commands.Cog):
         try: # remove queue from dictionary and delete original queue message
             msg = await cur_channel.fetch_message(self.queueDict[cur_channel.id]["msg_id"])
             await msg.delete()
-            del self.queueDict[cur_channel.id]
             if self.queueDict[cur_channel.id]["vc"] != None:
                 await (self.queueDict[cur_channel.id]["vc"]).delete()
+            del self.queueDict[cur_channel.id]
             await interaction.response.send_message(view=EmbedView(myText=f"The queue in this channel has ended"))
         except: 
             await interaction.response.send_message(view=EmbedView(myText="Error in removing queue from this channel"),ephemeral=True)
