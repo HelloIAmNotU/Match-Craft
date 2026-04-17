@@ -1,4 +1,4 @@
-import discord
+import discord, random
 from discord import app_commands
 from discord.ext import commands
 from views.helpers import EmbedView, EmbedPugView
@@ -74,22 +74,16 @@ class Queue(commands.Cog):
         if cur_channel.id in self.queueDict.keys(): # make sure the channel does not have queue
             return await interaction.response.send_message(view=EmbedView(myText="A queue already exists in this channel"),ephemeral=True)
         
-        game_name = ""
-        maxplayers = 0
-
-        for game in record:
-            game_name = game['game_name']
-            maxplayers = int(game['players_per_team']) * int(game['team_count'])
-            break
-
-        
+        game_name = record[0]['game_name']
+        maxplayers = int(record[0]['players_per_team']) * int(record[0]['team_count'])
+ 
         # add the queue to the dictionary
         self.queueDict[cur_channel.id] = {
             "name": game_name,
             "max": maxplayers,
             "players": [],
             "msg_id": None,
-            "vc": None,
+            "vc": [],
             "start": False
         }
 
@@ -133,7 +127,7 @@ class Queue(commands.Cog):
             if ((msgid := self.queueDict[cur_channel.id]["msg_id"]) != None):
                 msg = await cur_channel.fetch_message(msgid)
                 await msg.delete()
-            if ((vc := self.queueDict[cur_channel.id]["vc"]) != None):
+            for vc in self.queueDict[cur_channel.id]["vc"]:
                 await vc.delete()
             del self.queueDict[cur_channel.id]
             await interaction.response.send_message(view=EmbedView(myText=f"The queue in this channel has ended"))
@@ -165,20 +159,22 @@ class Queue(commands.Cog):
         cur_channel = interaction.channel
         if cur_channel.id not in self.queueDict.keys():
             return await interaction.response.send_message(view=EmbedView(myText="There is no queue in this channel"),ephemeral=True)
+        
+        players = self.queueDict[cur_channel.id]["players"]
 
-        if len(self.queueDict[cur_channel.id]["players"]) == 0:
+        if len(players) == 0:
             return await interaction.response.send_message(view=EmbedView(myText="There is no one in the queue"),ephemeral=True)
         
         overwrite = {}
         overwrite[interaction.guild.default_role] = discord.PermissionOverwrite(view_channel=False)
-        for player in self.queueDict[cur_channel.id]["players"]:
+        for player in players:
             overwrite[player] = discord.PermissionOverwrite(
                 view_channel = True,
                 speak = True
             )
         
         vc = await interaction.guild.create_voice_channel(name=self.queueDict[cur_channel.id]["name"],overwrites=overwrite,category=interaction.channel.category)
-        self.queueDict[cur_channel.id]["vc"] = vc
+        self.queueDict[cur_channel.id]["vc"].append(vc)
         self.queueDict[cur_channel.id]["start"] = True
 
         msg = await cur_channel.fetch_message(self.queueDict[cur_channel.id]["msg_id"])
@@ -189,11 +185,68 @@ class Queue(commands.Cog):
 
         await interaction.response.defer()
 
-        for player in self.queueDict[cur_channel.id]["players"]:
+        for player in players:
             dm = await player.create_dm()
             await dm.send(content=invite.url)
+        
+        record = self.gameCog.getGame(interaction.channel.category.id)
 
-        await interaction.followup.send(view=EmbedView(myText="Start success!"),ephemeral=True)  
+        if record[0]['team_count'] > 1 and len(players) > 2:
+            captain1Turn = True
+            team1 = []
+            team2 = []
+
+            captain1 = random.choice(players)
+            players.remove(captain1)
+            team1.append(captain1)
+
+            captain2 = random.choice(players)
+            players.remove(captain2)
+            team2.append(captain2)
+
+            promptMsg = interaction.channel.send(view=EmbedView(myText=(captain1.mention+", choose someone to join your team!")))
+            dropdownMsg = interaction.channel.send(view=EmbedView(myText="Waiting for dropdown..."))
+            await self.pickteam(players,captain1,captain2,team1,team2,captain1Turn,promptMsg,dropdownMsg)
+
+        return await interaction.followup.send(view=EmbedView(myText="Start success!"),ephemeral=True)  
+    
+    async def pickteam(self, players: list, Cap1: discord.User, Cap2: discord.User, Team1: list, Team2: list, Cap1Turn: bool, prompt: discord.Message, dropdown: discord.Message) -> None:
+        if len(players) == 0:
+            msg = "Team 1:\n"
+            for person in Team1:
+                msg += (person.mention+"\n")
+            msg += "\nTeam 2:\n"
+            for person in Team2:
+                msg += (person.mention+"\n")
+            await prompt.channel.send(view=EmbedView(myText=msg))
+            await prompt.delete()
+            await dropdown.delete()
+            return
+        
+        class Dropdown(discord.ui.Select):
+            def __init__(self, Queue: Queue) -> None:
+                options = []
+                self.queue = Queue
+                for player in players:
+                    options.append(discord.SelectOption(label=player.nick,value=str(player.id)))
+                super().__init__(placeholder="Choose a player to join your team!",min_values=1,max_values=1,options=options)
+            async def callback(self, interaction: discord.Interaction) -> None:
+                if (Cap1Turn and interaction.user.id != Cap1.id) or (not Cap1Turn and interaction.user.id != Cap2.id):
+                    return await interaction.response.send_message(view=EmbedView(myText="You cannot pick a teammate right now."),ephemeral=True)
+                
+                member = await interaction.guild.fetch_member(int(self.values[0]))
+                Team1.append(member) if Cap1Turn else Team2.append(member)
+                players.remove(member)
+
+                return await self.queue.pickteam(players,Cap1,Cap2,Team1,Team2,not Cap1Turn,prompt,dropdown)
+
+        class DropdownView(discord.ui.View):
+            def __init__(self, queue: Queue) -> None:
+                super().__init__(timeout=None)
+                self.add_item(Dropdown(Queue=queue))
+        
+        prompt.edit(view=EmbedView(myText=((Cap1 if Cap1Turn else Cap2).mention)+", choose someone to join your team!"))
+        dropdown.edit(view=DropdownView(self))
 
     # Below are commands which anyone can use
 
