@@ -7,25 +7,25 @@ from views.helpers import EmbedView
 class Game(commands.Cog):
     group = app_commands.Group(name="game",description="Related to games")
 
-    def __init__(self, bot) -> None:
+    def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self.adminCog=self.bot.get_cog("Admin")
 
-    def verifyAdmin(self, user: discord.User):
+    def verifyAdmin(self, user: discord.Member) -> bool:
         return self.adminCog.verifyAdmin(user)
     
-    async def getGame(self, category_id):
+    async def getGame(self, category_id: int):
         await db.connect()
         retval = await db.execute("SELECT * FROM game_configuration WHERE category = $1;", category_id)
         await db.close()
         return retval
 
-    @group.command(name="create", description="Creates a new game")
+    @group.command(name="create", description="ADMIN ONLY: Creates a new game")
     async def creategame(self, interaction: discord.Interaction, game_name : str, teams : int, players_per_team : int, role_based_matchmaking : bool, admin_role : discord.Role, access_role : discord.Role, num_roles : int | None):
         if not self.verifyAdmin(interaction.user):
             return await interaction.response.send_message(view=EmbedView(myText="This command is reserved for administrators"),ephemeral=True)
         
-        if players_per_team <= 0 or teams < 1:
+        if players_per_team < 1 or teams < 1:
             return await interaction.response.send_message(view=EmbedView(myText="Ensure that the number of teams is at least 1 and there are players on each team"),ephemeral=True)
         
         # Check if number of roles is correctly specified for role based matchmaking
@@ -86,7 +86,7 @@ class Game(commands.Cog):
         if not role_based_matchmaking:
             return await interaction.response.send_message(view=EmbedView(myText="Finished setting up game."),ephemeral=True)
         
-        def check_user(m):
+        def check_user(m: discord.Message) -> bool:
             return m.author == interaction.user and m.channel == interaction.channel
 
         try:
@@ -108,7 +108,7 @@ class Game(commands.Cog):
         await interaction.followup.send(view=EmbedView(myText="Finished setting up game."),ephemeral=True)
     
     # This command now works as intended. Nice!
-    @group.command(name="delete", description="ADMINS ONLY: Stops given games in dropdown. The dropdown lasts for 60 seconds")
+    @group.command(name="delete", description="ADMIN ONLY: Stops given games in dropdown. The dropdown lasts for 60 seconds")
     async def deletegames(self, interaction: discord.Interaction):
         if not self.verifyAdmin(interaction.user):
             return await interaction.response.send_message(view=EmbedView(myText="This command is reserved for administrators"),ephemeral=True)
@@ -122,12 +122,12 @@ class Game(commands.Cog):
             return await interaction.response.send_message(view=EmbedView(myText="No games found in this server."),ephemeral=True)
         
         class Dropdown(discord.ui.Select):
-            def __init__(self):
+            def __init__(self) -> None:
                 options = []
                 for game in record:
                     options.append(discord.SelectOption(label=game['game_name']))
                 super().__init__(placeholder="Choose a game to delete!",min_values=1,max_values=1,options=options)
-            async def callback(self, interaction: discord.Interaction):
+            async def callback(self, interaction: discord.Interaction) -> None:
                 for game in record:
                     if game['game_name'] != self.values[0]:
                         continue
@@ -145,7 +145,7 @@ class Game(commands.Cog):
                 await interaction.response.send_message(view=EmbedView(myText="Removal succeeded!"),ephemeral=True)
 
         class DropdownView(discord.ui.View):
-            def __init__(self):
+            def __init__(self) -> None:
                 super().__init__(timeout=180)
                 self.add_item(Dropdown())
 
